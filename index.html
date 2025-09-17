@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Kenaikan Jabatan</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js for data visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- jsPDF and html2canvas for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- SheetJS (xlsx) for Excel export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    /* Custom Styles */
+    body {
+      background-color: #f1f5f9; /* slate-100 */
+      font-family: 'Inter', sans-serif;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    .loader {
+      border: 5px solid #f3f3f3; /* Light grey */
+      border-top: 5px solid #3498db; /* Blue */
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .modal-backdrop {
+      background-color: rgba(0,0,0,0.5);
+    }
+    .pending-reminder {
+        background-color: #fffbeb; /* amber-50 */
+        border-left: 4px solid #f59e0b; /* amber-500 */
+    }
+    .pending-reminder td:first-child::before {
+        content: "REMINDER";
+        font-weight: 700;
+        color: #b45309; /* amber-700 */
+        display: block;
+        font-size: 0.7rem;
+    }
+  </style>
+</head>
+
+<body class="text-slate-800">
+
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen" class="fixed inset-0 bg-slate-200 z-50 flex items-center justify-center transition-opacity duration-500">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm text-center">
+      <i class="fa-solid fa-user-shield text-5xl text-blue-600 mb-4"></i>
+      <h2 class="text-2xl font-bold mb-2">Akses Terbatas</h2>
+      <p class="text-slate-500 mb-6">Silakan masuk untuk melanjutkan.</p>
+      <div class="space-y-4">
+        <input id="username" type="text" placeholder="Username" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <input id="password" type="password" placeholder="Password" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="login-button" class="w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Masuk</button>
+      </div>
+      <p id="login-error" class="text-red-500 mt-4 text-sm hidden">Username atau password salah.</p>
+    </div>
+  </div>
+
+  <!-- MAIN DASHBOARD CONTENT (Initially hidden) -->
+  <div id="main-content" class="hidden">
+     <!-- Header -->
+    <header class="bg-white shadow-md p-4 sticky top-0 z-30">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-left">
+                <h1 class="text-xl md:text-2xl font-bold text-blue-700">DAFTAR NAMA PEGAWAI FUNGSIONAL NAIK JABATAN</h1>
+                <p class="text-sm text-slate-500">USULAN TIM PENILAI KINERJA BPS PROVINSI SUMATERA UTARA</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                 <button id="settings-btn" class="text-slate-600 hover:text-blue-600 p-2 rounded-full hover:bg-slate-100 transition" title="Pengaturan">
+                    <i class="fa-solid fa-gear fa-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-6">
+      <!-- Controls -->
+      <div class="bg-white p-4 rounded-xl shadow-lg mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+        <!-- Sheet Selector -->
+        <div>
+          <label for="sheet-selector" class="block text-sm font-medium text-slate-600 mb-1">Pilih Periode Bulan:</label>
+          <select id="sheet-selector" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></select>
+        </div>
+        <!-- Search -->
+        <div>
+          <label for="search-input" class="block text-sm font-medium text-slate-600 mb-1">Cari Data:</label>
+          <div class="relative">
+            <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="search-input" placeholder="Cari berdasarkan Nama, NIP, Jabatan..." class="w-full p-2 pl-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          </div>
+        </div>
+        <!-- Action Buttons -->
+        <div class="md:text-right mt-4 md:mt-0">
+          <button id="add-new-btn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-all shadow-sm">
+            <i class="fa-solid fa-plus mr-2"></i>Tambah Usulan
+          </button>
+        </div>
+      </div>
+      
+      <!-- Visualizations -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white p-6 rounded-xl shadow-lg col-span-1 lg:col-span-2">
+            <h3 class="text-lg font-semibold mb-4">Status Putusan Akhir</h3>
+            <canvas id="statusChart"></canvas>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg">
+            <h3 class="text-lg font-semibold mb-4">Jumlah Usulan</h3>
+            <div id="summary-cards" class="space-y-4">
+                <!-- Summary cards will be injected here -->
+            </div>
+        </div>
+      </div>
+
+
+      <!-- Data Table -->
+      <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="p-4 flex justify-between items-center border-b">
+          <h2 class="text-lg font-semibold">Daftar Usulan Kenaikan Jabatan</h2>
+          <div class="space-x-2">
+            <button id="export-excel-btn" class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition-all shadow-sm"><i class="fa-solid fa-file-excel mr-2"></i>Export Excel</button>
+            <button id="export-pdf-btn" class="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-all shadow-sm"><i class="fa-solid fa-file-pdf mr-2"></i>Export PDF</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table id="data-table" class="w-full text-sm text-left">
+            <thead class="bg-slate-50 border-b">
+              <!-- Header will be generated by JS -->
+            </thead>
+            <tbody class="divide-y">
+              <!-- Data rows will be generated by JS -->
+            </tbody>
+          </table>
+        </div>
+        <div id="loader" class="p-8 text-center hidden">
+            <div class="loader inline-block"></div>
+            <p class="mt-4 text-slate-500">Memuat data...</p>
+        </div>
+        <div id="no-data" class="p-8 text-center text-slate-500 hidden">
+          <i class="fa-solid fa-box-open text-4xl mb-4"></i>
+          <p>Tidak ada data untuk periode ini.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- MODALS (Sama seperti sebelumnya, tidak ada perubahan) -->
+  <div id="form-modal" class="fixed inset-0 z-40 modal-backdrop items-center justify-center hidden">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl m-4">
+      <div class="p-6 border-b flex justify-between items-center">
+        <h3 id="modal-title" class="text-xl font-bold">Tambah Usulan Baru</h3>
+        <button id="close-modal-btn" class="text-slate-500 hover:text-red-600"><i class="fa-solid fa-times fa-lg"></i></button>
+      </div>
+      <form id="data-form" class="p-6 max-h-[70vh] overflow-y-auto">
+        <input type="hidden" id="form-row-index">
+        <div id="form-fields" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4"></div>
+      </form>
+      <div class="p-6 bg-slate-50 rounded-b-xl text-right space-x-3">
+        <button id="cancel-modal-btn" class="bg-slate-200 text-slate-700 font-semibold py-2 px-6 rounded-lg hover:bg-slate-300">Batal</button>
+        <button id="save-btn" class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-blue-700">Simpan</button>
+      </div>
+    </div>
+  </div>
+  <div id="settings-modal" class="fixed inset-0 z-40 modal-backdrop items-center justify-center hidden">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4">
+        <div class="p-6 border-b flex justify-between items-center">
+          <h3 class="text-xl font-bold">Pengaturan Aplikasi</h3>
+          <button id="close-settings-btn" class="text-slate-500 hover:text-red-600"><i class="fa-solid fa-times fa-lg"></i></button>
+        </div>
+        <div class="p-6 space-y-6">
+            <div>
+                <h4 class="font-semibold mb-2">Tambah Sheet Periode Baru</h4>
+                <div class="flex space-x-2">
+                    <input type="text" id="new-sheet-name" placeholder="Contoh: April 2024" class="flex-grow p-2 border rounded-lg">
+                    <button id="add-sheet-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-2">Hapus Sheet Periode</h4>
+                 <div class="flex space-x-2">
+                    <select id="delete-sheet-selector" class="flex-grow p-2 border rounded-lg"></select>
+                    <button id="delete-sheet-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white py-3 px-6 rounded-lg shadow-lg opacity-0 translate-y-10 transition-all duration-300">
+    <p id="toast-message"></p>
+  </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // !!! GANTI DENGAN URL API ANDA DARI LANGKAH 2 !!!
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwzHuEGy8XAhzC81r5_6nN51AmDdrfLIq22xV-k7i6uOhM_pJUvz-rDfFhan1hBGq6bXg/exec';
+
+  // --- STATE & DOM ELEMENTS (Sama seperti sebelumnya) ---
+  let currentSheetName = '';
+  let fullData = [];
+  let headers = [];
+  let statusChartInstance = null;
+  const columnToTrackForChart = "Putusan Akhir";
+  const loginScreen = document.getElementById('login-screen');
+  const mainContent = document.getElementById('main-content');
+  const loginButton = document.getElementById('login-button');
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+  const loginError = document.getElementById('login-error');
+  const sheetSelector = document.getElementById('sheet-selector');
+  const searchInput = document.getElementById('search-input');
+  const dataTableBody = document.querySelector('#data-table tbody');
+  const dataTableHeader = document.querySelector('#data-table thead');
+  const loader = document.getElementById('loader');
+  const noData = document.getElementById('no-data');
+  const formModal = document.getElementById('form-modal');
+  const formFields = document.getElementById('form-fields');
+  const modalTitle = document.getElementById('modal-title');
+  const formRowIndex = document.getElementById('form-row-index');
+  const toast = document.getElementById('toast');
+  const toastMessage = document.getElementById('toast-message');
+
+  // --- LOGIN LOGIC (Hanya memeriksa kredensial di sisi klien) ---
+  const handleLogin = () => {
+    const user = usernameInput.value;
+    const pass = passwordInput.value;
+    if (user === 'kepegawaian1200@gmail.com' && pass === 'pegawaisumut1200') {
+      loginScreen.classList.add('opacity-0', 'pointer-events-none');
+      mainContent.classList.remove('hidden');
+      setTimeout(() => loginScreen.classList.add('hidden'), 500);
+      initDashboard();
+    } else {
+      loginError.classList.remove('hidden');
+      usernameInput.classList.add('border-red-500');
+      passwordInput.classList.add('border-red-500');
+    }
+  };
+  loginButton.addEventListener('click', handleLogin);
+  passwordInput.addEventListener('keypress', (e) => e.key === 'Enter' && handleLogin());
+  
+  // --- CORE FUNCTIONS (Menggunakan FETCH) ---
+  const initDashboard = async () => {
+    await fetchSheetNames();
+    setupEventListeners();
+  };
+
+  const showToast = (message, isError = false) => {
+    toastMessage.textContent = message;
+    toast.className = `fixed bottom-5 right-5 text-white py-3 px-6 rounded-lg shadow-lg transition-all duration-300 ${isError ? 'bg-red-600' : 'bg-slate-800'}`;
+    setTimeout(() => { toast.classList.add('opacity-100', 'translate-y-0'); toast.classList.remove('opacity-0', 'translate-y-10'); }, 10);
+    setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-10'); }, 3000);
+  };
+
+  const fetchSheetNames = async () => {
+    try {
+      const response = await fetch(`${API_URL}?action=getSheetNames`);
+      const result = await response.json();
+      if(result.status === 'success') {
+        const names = result.data;
+        sheetSelector.innerHTML = '';
+        names.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          sheetSelector.appendChild(option);
+        });
+        if (names.length > 0) {
+          currentSheetName = names[0];
+          sheetSelector.value = currentSheetName;
+          loadDataForSheet(currentSheetName);
+        }
+        updateSettingsSheetList(names);
+      } else {
+        showToast(`Error: ${result.message}`, true);
+      }
+    } catch (err) {
+      showToast(`Gagal menghubungi server: ${err.message}`, true);
+    }
+  };
+
+  const loadDataForSheet = async (sheetName) => {
+    loader.classList.remove('hidden');
+    noData.classList.add('hidden');
+    dataTableBody.innerHTML = '';
+    dataTableHeader.innerHTML = '';
+    currentSheetName = sheetName;
+    try {
+        const response = await fetch(`${API_URL}?action=getData&sheetName=${encodeURIComponent(sheetName)}`);
+        const result = await response.json();
+        loader.classList.add('hidden');
+        if(result.status === 'success') {
+            headers = result.data.header;
+            fullData = result.data.data;
+            renderTable(fullData);
+            updateVisualizations(fullData);
+        } else {
+            showToast(result.message, true);
+        }
+    } catch (err) {
+        loader.classList.add('hidden');
+        showToast(`Gagal memuat data: ${err.message}`, true);
+    }
+  };
+  
+  // --- RENDER FUNCTIONS (Tidak ada perubahan) ---
+  const renderTable = (data) => {
+    dataTableHeader.innerHTML = ''; dataTableBody.innerHTML = '';
+    if (data.length === 0) { noData.classList.remove('hidden'); return; }
+    noData.classList.add('hidden');
+    const headerRow = document.createElement('tr');
+    headers.forEach(h => { const th = document.createElement('th'); th.className = 'px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider'; th.textContent = h; headerRow.appendChild(th); });
+    const thAction = document.createElement('th'); thAction.className = 'px-6 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider'; thAction.textContent = 'Aksi'; headerRow.appendChild(thAction);
+    dataTableHeader.appendChild(headerRow);
+    data.forEach((row, index) => {
+      const tr = document.createElement('tr'); const originalRowIndex = index + 2; tr.dataset.rowIndex = originalRowIndex;
+      let isPending = false; let displayRow = [...row];
+      if (typeof displayRow[0] === 'string' && displayRow[0].startsWith('PENDING: ')) { isPending = true; tr.classList.add('pending-reminder'); displayRow[0] = displayRow[0].replace('PENDING: ', ''); }
+      displayRow.forEach(cell => { const td = document.createElement('td'); td.className = 'px-6 py-4 whitespace-nowrap'; td.textContent = cell; tr.appendChild(td); });
+      const tdActions = document.createElement('td'); tdActions.className = 'px-6 py-4 whitespace-nowrap text-right space-x-2';
+      if (!isPending) {
+        const editBtn = document.createElement('button'); editBtn.innerHTML = `<i class="fa-solid fa-pencil text-blue-500"></i>`; editBtn.title = "Edit"; editBtn.className = "hover:text-blue-700"; editBtn.onclick = () => openFormModal('edit', originalRowIndex); tdActions.appendChild(editBtn);
+        const deleteBtn = document.createElement('button'); deleteBtn.innerHTML = `<i class="fa-solid fa-trash text-red-500"></i>`; deleteBtn.title = "Hapus"; deleteBtn.className = "hover:text-red-700"; deleteBtn.onclick = () => deleteRow(originalRowIndex); tdActions.appendChild(deleteBtn);
+      }
+      tr.appendChild(tdActions); dataTableBody.appendChild(tr);
+    });
+  };
+  const updateVisualizations = (data) => { /* ... (Fungsi ini sama, tidak perlu diubah) ... */
+    const statusIndex = headers.indexOf(columnToTrackForChart); if (statusIndex === -1) return;
+    const statusCounts = data.reduce((acc, row) => { const status = row[statusIndex] || "Belum Diputuskan"; acc[status] = (acc[status] || 0) + 1; return acc; }, {});
+    const chartLabels = Object.keys(statusCounts); const chartData = Object.values(statusCounts);
+    if (statusChartInstance) statusChartInstance.destroy();
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    statusChartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: chartLabels, datasets: [{ label: 'Status Putusan Akhir', data: chartData, backgroundColor: ['rgba(59, 130, 246, 0.7)','rgba(34, 197, 94, 0.7)','rgba(239, 68, 68, 0.7)','rgba(245, 158, 11, 0.7)','rgba(107, 114, 128, 0.7)'], borderColor: '#fff', borderWidth: 2 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
+    const summaryContainer = document.getElementById('summary-cards');
+    summaryContainer.innerHTML = `
+      <div class="flex justify-between items-center bg-blue-50 p-4 rounded-lg"><div><p class="text-sm font-medium text-blue-600">Total Usulan</p><p class="text-2xl font-bold">${data.length}</p></div><i class="fa-solid fa-users text-2xl text-blue-400"></i></div>
+      <div class="flex justify-between items-center bg-green-50 p-4 rounded-lg"><div><p class="text-sm font-medium text-green-600">Diterima</p><p class="text-2xl font-bold">${statusCounts['Diterima'] || 0}</p></div><i class="fa-solid fa-user-check text-2xl text-green-400"></i></div>
+      <div class="flex justify-between items-center bg-amber-50 p-4 rounded-lg"><div><p class="text-sm font-medium text-amber-600">Pending</p><p class="text-2xl font-bold">${(statusCounts['Pending Promosi'] || 0) + (statusCounts['Pending'] || 0)}</p></div><i class="fa-solid fa-user-clock text-2xl text-amber-400"></i></div>`;
+  };
+
+  // --- API CALL HELPER for POST requests ---
+  const postToServer = async (payload) => {
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Important for simple POST requests to GAS
+            redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+        // Since no-cors mode returns an opaque response, we can't read the result here.
+        // We will assume success and reload the data. For more complex apps, a more advanced
+        // authentication/response mechanism would be needed.
+        return { status: 'success', message: `Operasi "${payload.action}" telah dikirim.` };
+    } catch (err) {
+        return { status: 'error', message: `Gagal mengirim data: ${err.message}` };
+    }
+  };
+
+  // --- MODAL, DELETE, SETTINGS (Menggunakan postToServer) ---
+  const openFormModal = (mode, rowIndex = null) => { /* ... (Fungsi ini sama, tidak perlu diubah) ... */ 
+    formFields.innerHTML = ''; document.getElementById('data-form').reset(); formRowIndex.value = rowIndex || '';
+    headers.forEach(header => {
+      if (header.toLowerCase() === 'no') return;
+      const fieldContainer = document.createElement('div'); const label = document.createElement('label'); label.textContent = header; label.className = 'block text-sm font-medium text-slate-700 mb-1'; fieldContainer.appendChild(label);
+      const input = document.createElement('input'); input.type = 'text'; input.name = header; input.id = `form-${header.replace(/[\s/]+/g, '-')}`; input.className = 'w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500'; fieldContainer.appendChild(input); formFields.appendChild(fieldContainer);
+    });
+    if (mode === 'edit' && rowIndex) {
+      modalTitle.textContent = 'Edit Data Usulan'; const rowData = fullData.find((row, index) => index + 2 === rowIndex);
+      if (rowData) { headers.forEach((header, index) => { const input = document.getElementById(`form-${header.replace(/[\s/]+/g, '-')}`); if (input) input.value = rowData[index] || ''; }); }
+    } else { modalTitle.textContent = 'Tambah Usulan Baru'; }
+    formModal.classList.remove('hidden'); formModal.classList.add('flex');
+  };
+  const closeFormModal = () => { formModal.classList.add('hidden'); formModal.classList.remove('flex'); };
+  
+  const saveFormData = async () => {
+    const formData = new FormData(document.getElementById('data-form'));
+    const rowData = {}; headers.forEach(header => { if(header.toLowerCase() !== 'no') { rowData[header] = formData.get(header) || ''; } });
+    const rowIndex = formRowIndex.value;
+    const action = rowIndex ? 'updateData' : 'addData';
+    const payload = rowIndex ? { action, sheetName: currentSheetName, rowIndex, rowData } : { action, sheetName: currentSheetName, rowData };
+    
+    const saveBtn = document.getElementById('save-btn'); saveBtn.textContent = "Menyimpan..."; saveBtn.disabled = true;
+    const result = await postToServer(payload);
+    saveBtn.textContent = "Simpan"; saveBtn.disabled = false;
+    showToast(result.message, result.status === 'error');
+    if (result.status === 'success') {
+        closeFormModal();
+        setTimeout(() => loadDataForSheet(currentSheetName), 1000); // Wait a moment for sheets to update
+    }
+  };
+
+  const deleteRow = async (rowIndex) => {
+    if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
+      const result = await postToServer({ action: 'deleteData', sheetName: currentSheetName, rowIndex });
+      showToast(result.message, result.status === 'error');
+      if (result.status === 'success') {
+          setTimeout(() => loadDataForSheet(currentSheetName), 1000);
+      }
+    }
+  };
+
+  const settingsModal = document.getElementById('settings-modal');
+  const openSettingsModal = () => settingsModal.classList.add('flex') & settingsModal.classList.remove('hidden');
+  const closeSettingsModal = () => settingsModal.classList.add('hidden') & settingsModal.classList.remove('flex');
+  const updateSettingsSheetList = (names) => { /* ... (Sama) ... */ 
+    const deleteSelector = document.getElementById('delete-sheet-selector'); deleteSelector.innerHTML = '';
+    names.forEach(name => { const option = document.createElement('option'); option.value = name; option.textContent = name; deleteSelector.appendChild(option); });
+  };
+  const handleAddNewSheet = async () => {
+    const name = document.getElementById('new-sheet-name').value.trim();
+    if (!name) return showToast('Nama sheet baru tidak boleh kosong.', true);
+    const result = await postToServer({ action: 'addNewSheet', newName: name });
+    showToast(result.message, result.status === 'error');
+    if (result.status === 'success') {
+        document.getElementById('new-sheet-name').value = '';
+        setTimeout(fetchSheetNames, 1000);
+    }
+  };
+  const handleDeleteSheet = async () => {
+    const sheetToDelete = document.getElementById('delete-sheet-selector').value;
+    if (confirm(`Apakah Anda yakin ingin menghapus permanen sheet "${sheetToDelete}"?`)) {
+        const result = await postToServer({ action: 'deleteSheet', sheetName: sheetToDelete });
+        showToast(result.message, result.status === 'error');
+        if (result.status === 'success') {
+            setTimeout(fetchSheetNames, 1000);
+        }
+    }
+  };
+
+  // --- EXPORT & EVENT LISTENERS (Tidak ada perubahan) ---
+  const exportToExcel = () => { /* ... (Sama) ... */
+    const dataToExport = fullData.map(row => { const obj = {}; headers.forEach((h, i) => obj[h] = row[i]); return obj; });
+    const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, currentSheetName); XLSX.writeFile(wb, `Data Kenaikan Jabatan - ${currentSheetName}.xlsx`);
+  };
+  const exportToPDF = () => { /* ... (Sama) ... */
+    showToast("Mempersiapkan PDF..."); const table = document.getElementById('data-table'); const { jsPDF } = window.jspdf;
+    html2canvas(table, { scale: 2 }).then(canvas => {
+      const imgData = canvas.toDataURL('image/png'); const doc = new jsPDF('l', 'mm', 'a4'); const imgProps = doc.getImageProperties(imgData);
+      const pdfWidth = doc.internal.pageSize.getWidth() - 20; const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      doc.text(`Daftar Usulan - ${currentSheetName}`, 10, 10); doc.addImage(imgData, 'PNG', 10, 20, pdfWidth, pdfHeight);
+      doc.save(`Data Kenaikan Jabatan - ${currentSheetName}.pdf`);
+    });
+  };
+  const setupEventListeners = () => {
+    sheetSelector.addEventListener('change', (e) => loadDataForSheet(e.target.value));
+    searchInput.addEventListener('input', (e) => { const searchTerm = e.target.value.toLowerCase(); const filteredData = fullData.filter(row => row.some(cell => String(cell).toLowerCase().includes(searchTerm))); renderTable(filteredData); });
+    document.getElementById('add-new-btn').addEventListener('click', () => openFormModal('add'));
+    document.getElementById('close-modal-btn').addEventListener('click', closeFormModal);
+    document.getElementById('cancel-modal-btn').addEventListener('click', closeFormModal);
+    document.getElementById('save-btn').addEventListener('click', saveFormData);
+    document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+    document.getElementById('close-settings-btn').addEventListener('click', closeSettingsModal);
+    document.getElementById('add-sheet-btn').addEventListener('click', handleAddNewSheet);
+    document.getElementById('delete-sheet-btn').addEventListener('click', handleDeleteSheet);
+    document.getElementById('export-excel-btn').addEventListener('click', exportToExcel);
+    document.getElementById('export-pdf-btn').addEventListener('click', exportToPDF);
+  };
+});
+</script>
+
+</body>
+</html>
+
